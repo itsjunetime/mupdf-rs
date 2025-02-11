@@ -99,3 +99,47 @@ pub use size::Size;
 pub use stroke_state::{LineCap, LineJoin, StrokeState};
 pub use text::{Text, TextItem, TextSpan};
 pub use text_page::{TextBlock, TextChar, TextLine, TextPage, TextPageOptions};
+
+use core::marker::PhantomData;
+use zerocopy::{FromBytes, IntoBytes};
+
+unsafe fn rust_vec_from_ffi_ptr<F: IntoBytes, R: FromBytes>(
+    ptr: *mut F,
+    len: i32,
+) -> Result<Vec<R>, Error> {
+    let _assert = AssertSizeEquals::<F, R>::new();
+
+    if ptr.is_null() {
+        return Err(Error::UnexpectedNullPtr);
+    }
+
+    let rust_ty_ptr = ptr as *mut R;
+    let len = usize::try_from(len)?;
+    Ok(unsafe { Vec::from_raw_parts(rust_ty_ptr, len, len) })
+}
+
+fn rust_slice_to_ffi_ptr<F: FromBytes, R: IntoBytes>(vec: &[R]) -> Result<(*const F, i32), Error> {
+    let _assert = AssertSizeEquals::<F, R>::new();
+
+    let len = i32::try_from(vec.len())?;
+    let ptr = vec.as_ptr() as *mut F;
+    if ptr.is_null() {
+        return Err(Error::UnexpectedNullPtr);
+    }
+
+    Ok((ptr, len))
+}
+
+struct AssertSizeEquals<A, B> {
+    _phantom: PhantomData<(A, B)>,
+}
+
+impl<A, B> AssertSizeEquals<A, B> {
+    const _SIZE_OK: () = assert!(size_of::<A>() == size_of::<B>());
+
+    fn new() -> Self {
+        Self {
+            _phantom: PhantomData,
+        }
+    }
+}

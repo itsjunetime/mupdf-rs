@@ -1,9 +1,11 @@
-use mupdf_sys::*;
+use mupdf_sys::fz_quad;
 
 use crate::Point;
 
 /// A representation for a region defined by 4 points
-#[derive(Debug, Clone, PartialEq)]
+#[derive(
+    Debug, Clone, PartialEq, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable,
+)]
 pub struct Quad {
     pub ul: Point,
     pub ur: Point,
@@ -18,12 +20,7 @@ impl Quad {
 }
 
 impl From<fz_quad> for Quad {
-    fn from(quad: fz_quad) -> Self {
-        Self {
-            ul: quad.ul.into(),
-            ur: quad.ur.into(),
-            ll: quad.ll.into(),
-            lr: quad.lr.into(),
-        }
+    fn from(value: fz_quad) -> Self {
+        zerocopy::transmute!(value)
     }
 }

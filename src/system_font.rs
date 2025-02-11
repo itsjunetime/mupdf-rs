@@ -12,6 +12,9 @@ use num_enum::TryFromPrimitive;
 use crate::font::Font;
 use mupdf_sys::*;
 
+/// # Safety
+///
+/// * `name` must be valid to call [`CStr::from_ptr`] with (see its documentation for details)
 pub unsafe extern "C" fn load_system_font(
     ctx: *mut fz_context,
     name: *const c_char,
@@ -19,7 +22,10 @@ pub unsafe extern "C" fn load_system_font(
     italic: c_int,
     needs_exact_metrics: c_int,
 ) -> *mut fz_font {
-    if let Ok(mut name) = CStr::from_ptr(name).to_str() {
+    // SAFETY: Upheld by caller
+    let cstr = unsafe { CStr::from_ptr(name) };
+
+    if let Ok(mut name) = cstr.to_str() {
         let font_source = SystemSource::new();
         let handle = match font_source.select_by_postscript_name(name) {
             Ok(handle) => Ok(handle),
@@ -57,17 +63,16 @@ pub unsafe extern "C" fn load_system_font(
                 ),
                 Err(_) => return ptr::null_mut(),
             };
-            match font {
-                Ok(font) => {
-                    if needs_exact_metrics == 1
-                        && ((bold == 1 && !font.is_bold()) || (italic == 1 && !font.is_italic()))
-                    {
-                        return ptr::null_mut();
-                    }
-                    fz_keep_font(ctx, font.inner);
-                    return font.inner;
+            if let Ok(font) = font {
+                if needs_exact_metrics == 1
+                    && ((bold == 1 && !font.is_bold()) || (italic == 1 && !font.is_italic()))
+                {
+                    return ptr::null_mut();
                 }
-                Err(_) => {}
+                // SAFETY: `ctx` is given us by the caller, who we are then passing it to again.
+                // font.inner is valid because we just verified that it's real
+                unsafe { fz_keep_font(ctx, font.inner) };
+                return font.inner;
             }
         }
     }
@@ -145,38 +150,26 @@ pub unsafe extern "C" fn load_system_cjk_font(
     ptr::null_mut()
 }
 
+/// # Safety
+///
+/// * `ctx` and `name` are passed to [`load_system_font`], so they must be safe to pass there.
 #[cfg(not(windows))]
 pub unsafe extern "C" fn load_system_cjk_font(
     ctx: *mut fz_context,
     name: *const c_char,
-    ordering: c_int,
-    serif: c_int,
+    _ordering: c_int,
+    _serif: c_int,
 ) -> *mut fz_font {
     // Try name first
-    let font = load_system_font(ctx, name, 0, 0, 0);
-    if !font.is_null() {
-        return font;
-    }
-    if serif == 1 {
-        match Ordering::try_from(ordering as u32) {
-            Ok(Ordering::AdobeCns) => {}
-            Ok(Ordering::AdobeGb) => {}
-            Ok(Ordering::AdobeJapan) => {}
-            Ok(Ordering::AdobeKorea) => {}
-            Err(_) => {}
-        }
-    } else {
-        match Ordering::try_from(ordering as u32) {
-            Ok(Ordering::AdobeCns) => {}
-            Ok(Ordering::AdobeGb) => {}
-            Ok(Ordering::AdobeJapan) => {}
-            Ok(Ordering::AdobeKorea) => {}
-            Err(_) => {}
-        }
-    }
-    ptr::null_mut()
+    // SAFETY: Upheld by caller
+    unsafe { load_system_font(ctx, name, 0, 0, 0) }
 }
 
+/// # Safety
+///
+/// * Nothing. This function always returns [`ptr::null_mut`] and doesn't interact
+///   with any of its input. It must be `unsafe extern "C"` since it is provided to
+///   `mupdf_sys` for some FFI functionality
 pub unsafe extern "C" fn load_system_fallback_font(
     _ctx: *mut fz_context,
     _script: c_int,

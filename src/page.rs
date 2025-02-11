@@ -1,15 +1,12 @@
 use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::ptr;
-use std::slice;
-
-use serde::{Deserialize, Serialize};
 
 use mupdf_sys::*;
 
 use crate::{
-    context, Buffer, Colorspace, Cookie, Device, DisplayList, Error, Link, Matrix, Pixmap, Quad,
-    Rect, Separations, TextPage, TextPageOptions,
+    context, rust_vec_from_ffi_ptr, Buffer, Colorspace, Cookie, Device, DisplayList, Error, Link,
+    Matrix, Pixmap, Quad, Rect, Separations, TextPage, TextPageOptions,
 };
 
 #[derive(Debug)]
@@ -310,20 +307,21 @@ impl Page {
         let c_needle = CString::new(needle)?;
         let hit_max = if hit_max < 1 { 16 } else { hit_max };
         let mut hit_count = 0;
-        unsafe {
-            let quads = Quads(ffi_try!(mupdf_search_page(
+        let quads = unsafe {
+            Quads(ffi_try!(mupdf_search_page(
                 context(),
                 self.inner,
                 c_needle.as_ptr(),
                 hit_max as _,
                 &mut hit_count
-            )));
-            if hit_count == 0 {
-                return Ok(Vec::new());
-            }
-            let items = slice::from_raw_parts(quads.0, hit_count as usize);
-            Ok(items.iter().map(|quad| (*quad).into()).collect())
+            )))
+        };
+
+        if hit_count == 0 {
+            return Ok(Vec::new());
         }
+
+        unsafe { rust_vec_from_ffi_ptr(quads.0, hit_count) }
     }
 }
 
@@ -381,7 +379,8 @@ impl Iterator for LinkIter {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Font {
     pub name: String,
     pub family: String,
@@ -390,7 +389,8 @@ pub struct Font {
     pub size: u32,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct BBox {
     pub x: u32,
     pub y: u32,
@@ -398,7 +398,8 @@ pub struct BBox {
     pub h: u32,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Line {
     pub wmode: u32,
     pub bbox: BBox,
@@ -408,7 +409,8 @@ pub struct Line {
     pub text: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Block {
     pub r#type: String,
     pub bbox: BBox,
@@ -416,17 +418,18 @@ pub struct Block {
 }
 
 // StructuredText
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct StextPage {
     pub blocks: Vec<Block>,
 }
 
 #[cfg(test)]
 mod test {
-    use crate::page::StextPage;
     use crate::{Document, Matrix};
 
     #[test]
+    #[cfg(feature = "serde")]
     fn test_get_stext_page_as_json() {
         let path_to_doc = std::env::current_dir()
             .unwrap()
@@ -437,7 +440,7 @@ mod test {
         let page = doc.load_page(0).unwrap();
         match page.stext_page_as_json_from_page(1.0) {
             Ok(stext_json) => {
-                let stext_page: serde_json::Result<StextPage> =
+                let stext_page: serde_json::Result<crate::page::StextPage> =
                     serde_json::from_str(stext_json.as_str());
                 match stext_page {
                     Ok(res) => {

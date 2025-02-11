@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::ffi::CString;
 use std::io;
 use std::ptr;
+use std::str::FromStr;
 
 use mupdf_sys::*;
 
@@ -15,6 +16,16 @@ pub struct Buffer {
     offset: usize,
 }
 
+impl FromStr for Buffer {
+    type Err = Error;
+
+    fn from_str(str: &str) -> Result<Self, Error> {
+        let c_str = CString::new(str)?;
+        let inner = unsafe { ffi_try!(mupdf_buffer_from_str(context(), c_str.as_ptr())) };
+        Ok(Self { inner, offset: 0 })
+    }
+}
+
 impl Buffer {
     pub(crate) unsafe fn from_raw(ptr: *mut fz_buffer) -> Self {
         Self {
@@ -25,12 +36,6 @@ impl Buffer {
 
     pub fn new() -> Self {
         Self::with_capacity(0)
-    }
-
-    pub fn from_str(str: &str) -> Result<Self, Error> {
-        let c_str = CString::new(str)?;
-        let inner = unsafe { ffi_try!(mupdf_buffer_from_str(context(), c_str.as_ptr())) };
-        Ok(Self { inner, offset: 0 })
     }
 
     pub fn from_base64(str: &str) -> Result<Self, Error> {
@@ -46,6 +51,7 @@ impl Buffer {
     }
 
     pub fn with_capacity(cap: usize) -> Self {
+        // SAFETY:
         let inner = unsafe { fz_new_buffer(context(), cap) };
         Self { inner, offset: 0 }
     }
@@ -152,7 +158,7 @@ impl TryFrom<Vec<u8>> for Buffer {
 #[cfg(test)]
 mod test {
     use super::Buffer;
-    use std::io::{Read, Write};
+    use std::{str::FromStr, io::{Read, Write}};
 
     #[test]
     fn test_buffer_len() {
@@ -167,7 +173,7 @@ mod test {
         assert_eq!(n, 3);
 
         let mut output = [0; 3];
-        buf.read(&mut output).unwrap();
+        buf.read_exact(&mut output).unwrap();
         assert_eq!(output, [97, 98, 99]);
     }
 
@@ -225,7 +231,7 @@ mod test {
     fn test_buffer_from_str() {
         let mut buf = Buffer::from_str("abc").unwrap();
         let mut output = [0; 3];
-        buf.read(&mut output).unwrap();
+        buf.read_exact(&mut output).unwrap();
         assert_eq!(output, [97, 98, 99]);
     }
 
@@ -233,7 +239,7 @@ mod test {
     fn test_buffer_from_base64() {
         let mut buf = Buffer::from_base64("YWJj").unwrap();
         let mut output = [0; 3];
-        buf.read(&mut output).unwrap();
+        buf.read_exact(&mut output).unwrap();
         assert_eq!(output, [97, 98, 99]);
     }
 }

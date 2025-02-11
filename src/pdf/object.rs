@@ -3,6 +3,7 @@ use std::ffi::{CStr, CString};
 use std::fmt;
 use std::io::{self, BufReader, Read, Write};
 use std::slice;
+use std::str::FromStr;
 
 use mupdf_sys::*;
 

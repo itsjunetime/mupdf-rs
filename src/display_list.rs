@@ -1,11 +1,10 @@
 use std::ffi::CString;
-use std::slice;
 
 use mupdf_sys::*;
 
 use crate::{
-    context, Colorspace, Cookie, Device, Error, Image, Matrix, Pixmap, Quad, Rect, TextPage,
-    TextPageOptions,
+    context, rust_vec_from_ffi_ptr, Colorspace, Cookie, Device, Error, Image, Matrix, Pixmap, Quad,
+    Rect, TextPage, TextPageOptions,
 };
 
 #[derive(Debug)]
@@ -108,20 +107,17 @@ impl DisplayList {
         let c_needle = CString::new(needle)?;
         let hit_max = if hit_max < 1 { 16 } else { hit_max };
         let mut hit_count = 0;
-        unsafe {
-            let quads = Quads(ffi_try!(mupdf_search_display_list(
+        let quads = Quads(unsafe {
+            ffi_try!(mupdf_search_display_list(
                 context(),
                 self.inner,
                 c_needle.as_ptr(),
                 hit_max as _,
                 &mut hit_count
-            )));
-            if hit_count == 0 {
-                return Ok(Vec::new());
-            }
-            let items = slice::from_raw_parts(quads.0, hit_count as usize);
-            Ok(items.iter().map(|quad| (*quad).into()).collect())
-        }
+            ))
+        });
+
+        unsafe { rust_vec_from_ffi_ptr(quads.0, hit_count) }
     }
 }
 

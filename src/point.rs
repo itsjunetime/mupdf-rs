@@ -3,7 +3,9 @@ use mupdf_sys::{fz_point, fz_transform_point};
 use crate::Matrix;
 
 /// A point in a two-dimensional space.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Immutable,
+)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
@@ -32,14 +34,16 @@ impl Point {
 }
 
 impl From<fz_point> for Point {
+    #[inline(always)]
     fn from(p: fz_point) -> Self {
-        Self { x: p.x, y: p.y }
+        zerocopy::transmute!(p)
     }
 }
 
 impl From<Point> for fz_point {
+    #[inline(always)]
     fn from(p: Point) -> Self {
-        fz_point { x: p.x, y: p.y }
+        zerocopy::transmute!(p)
     }
 }
 

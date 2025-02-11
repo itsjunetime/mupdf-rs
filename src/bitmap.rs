@@ -1,5 +1,5 @@
-use std::convert::TryFrom;
 use std::slice;
+use std::{convert::TryFrom, ptr::NonNull};
 
 use mupdf_sys::*;
 
@@ -10,60 +10,59 @@ use crate::{context, Error, Pixmap};
 /// Samples are stored msb first, akin to pbms.
 #[derive(Debug)]
 pub struct Bitmap {
-    pub(crate) inner: *mut fz_bitmap,
+    pub(crate) inner: NonNull<fz_bitmap>,
 }
 
 impl Bitmap {
     pub fn from_pixmap(pixmap: &Pixmap) -> Result<Self, Error> {
-        let inner = unsafe { ffi_try!(mupdf_new_bitmap_from_pixmap(context(), pixmap.inner)) };
+        let inner = ffi_try!(mupdf_new_bitmap_from_pixmap(context(), pixmap.inner));
+        let inner = NonNull::new(inner).ok_or(Error::UnexpectedNullPtr)?;
         Ok(Self { inner })
+    }
+
+    fn inner_as_ref(&self) -> &fz_bitmap {
+        unsafe { self.inner.as_ref() }
     }
 
     /// Width of the region in pixels.
     pub fn width(&self) -> u32 {
-        unsafe { (*self.inner).w as u32 }
+        self.inner_as_ref().w as u32
     }
 
     /// Height of the region in pixels.
     pub fn height(&self) -> u32 {
-        unsafe { (*self.inner).h as u32 }
+        self.inner_as_ref().h as u32
     }
 
     pub fn stride(&self) -> i32 {
-        unsafe { (*self.inner).stride }
+        self.inner_as_ref().stride
     }
 
     pub fn n(&self) -> i32 {
-        unsafe { (*self.inner).n }
+        self.inner_as_ref().n
     }
 
     /// Horizontal and vertical resolution in dpi (dots per inch).
     pub fn resolution(&self) -> (i32, i32) {
-        unsafe {
-            let x_res = (*self.inner).xres;
-            let y_res = (*self.inner).yres;
-            (x_res, y_res)
-        }
+        let x_res = self.inner_as_ref().xres;
+        let y_res = self.inner_as_ref().yres;
+        (x_res, y_res)
     }
 
     pub fn samples(&self) -> &[u8] {
         let len = (self.width() * self.height()) as usize;
-        unsafe { slice::from_raw_parts((*self.inner).samples, len) }
+        unsafe { slice::from_raw_parts(self.inner_as_ref().samples, len) }
     }
 
     pub fn samples_mut(&mut self) -> &mut [u8] {
         let len = (self.width() * self.height()) as usize;
-        unsafe { slice::from_raw_parts_mut((*self.inner).samples, len) }
+        unsafe { slice::from_raw_parts_mut(self.inner_as_ref().samples, len) }
     }
 }
 
 impl Drop for Bitmap {
     fn drop(&mut self) {
-        if !self.inner.is_null() {
-            unsafe {
-                fz_drop_bitmap(context(), self.inner);
-            }
-        }
+        unsafe { fz_drop_bitmap(context(), self.inner.as_ptr()) }
     }
 }
 
